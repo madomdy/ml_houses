@@ -1,7 +1,36 @@
+import os
+import shutil
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+
+OUT_FOLDER = None
+RESULT_FILE = "results.txt"
+
+
+def set_output(dir_name="out"):
+    global OUT_FOLDER
+    if os.path.exists(dir_name):
+        shutil.rmtree(dir_name)
+    os.makedirs(dir_name)
+    OUT_FOLDER = dir_name
+
+
+def write_out(file_name, data, mode="a"):
+    if OUT_FOLDER is None:
+        return
+    dest = os.path.join(OUT_FOLDER, file_name)
+    with open(dest, mode) as out:
+        out.write(data + '\n')
+
+
+def write_out_fig(name):
+    if OUT_FOLDER is None:
+        return
+    dest = os.path.join(OUT_FOLDER, name)
+    plt.savefig(dest)
 
 
 class MyLinearRegression(object):
@@ -27,14 +56,18 @@ class MyLinearRegression(object):
     def _fit_grad(self, X, y):
         weight = np.zeros(X.shape[1])
         params_alpha = self.params.get('alpha', None)
-        for it in range(1000):
+        params_stop = self.params.get('stop', 0.0000001)
+        params_iters = self.params.get('iters', 1000)
+        for it in range(params_iters):
             new_weight = weight.copy()
-            alpha = 2 / (it + 1) if params_alpha is None else params_alpha
+            alpha = 2.0 / (it + 1) if params_alpha is None else params_alpha
             for j in range(len(new_weight)):
                 grad = 0
                 for i in range(X.shape[0]):
                     grad += (np.dot(weight, X[i]) - y[i]) * X[i][j]
                 new_weight[j] -= alpha * 2 / X.shape[0] * grad
+            if sum(x**2 for x in new_weight-weight) < params_stop:
+                break
             weight = new_weight.copy()
         self.sample_weight = weight
 
@@ -49,23 +82,37 @@ class MyLinearRegression(object):
 
         return self.sample_weight
 
-    def predict(self, X):
-        if self.sample_weight is None:
+    def predict(self, X, sample_weight=None):
+        if self.sample_weight is None and sample_weight is None:
             raise ValueError("Sample weights are not fitted")
-        if X.shape[1] != self.sample_weight.shape[0]:
+        sample_weight = sample_weight or self.sample_weight
+        if X.shape[1] != sample_weight.shape[0]:
             raise ValueError(
                 "Wrong shapes of X: {} and sample weights: {}".format(
-                    X.shape, self.sample_weight))
-        return np.dot(X, self.sample_weight)
+                    X.shape, sample_weight))
+        return np.dot(X, sample_weight)
 
-    def score(self, X, y):
+    def score_r2(self, X, y, sample_weight=None):
         """Return R**2 score"""
-        f = self.predict(X)
+        f = self.predict(X, sample_weight)
         y_mean = np.mean(y)
         ss_tot = sum((y_value - y_mean)**2 for y_value in y)
         ss_res = sum((y[i] - f[i])**2 for i in range(len(y)))
 
         return 1 - ss_res / ss_tot
+
+    def score_rss(self, X, y, sample_weight=None):
+        """Return RSS score"""
+        f = self.predict(X, sample_weight)
+        return sum((y[i] - f[i])**2 for i in range(len(f))) / len(f)
+
+    def score(self, X, y, sample_weight=None, method="r2"):
+        if method == "r2":
+            return self.score_r2(X, y, sample_weight)
+        elif method == "rss":
+            return self.score_rss(X, y, sample_weight)
+        else:
+            raise ValueError("Wrong score method {}".format(method))
 
 
 def get_xy(data, y_name=None):
@@ -123,7 +170,7 @@ def correlation_report(data, target_name):
     plt.xticks(x_values + 0.5, names)
     plt.ylabel('Correlation coefficient')
     plt.title('Correlation coefficient between target and features')
-    plt.show()
+    write_out_fig("correlation_target_others.png")
 
     # Build target dependency graphics
     nrows, ncols = 4, 4
@@ -135,10 +182,10 @@ def correlation_report(data, target_name):
         axes[row, col].set_xlabel(column_name)
         axes[row, col].set_ylabel(target_name)
     fig.tight_layout(h_pad=0.3)
-    plt.show()
+    write_out_fig("target_others.png")
 
     # Print correlation matrix
-    print(corr)
+    write_out(RESULT_FILE, "Correlation matrix\n{}".format(corr))
 
 
 def analytic_report(X_train, X_test, y_train, y_test):
@@ -146,19 +193,42 @@ def analytic_report(X_train, X_test, y_train, y_test):
     l2 = MyLinearRegression()
     l1.fit(X_train, y_train)
     l2.fit(X_train, y_train)
-    print("Sklearn LinRegr R-squared score: ", l1.score(X_test, y_test))
-    print("Custom analytic LinRegr R-squared score: ", l2.score(X_test, y_test))
+    write_out(RESULT_FILE,
+              "Sklearn LinRegr R-squared score: "
+              "{}".format(l1.score(X_test, y_test)))
+    write_out(RESULT_FILE,
+              "Custom analytic LinRegr R-squared score: "
+              "{}".format(l2.score(X_test, y_test)))
+    write_out(RESULT_FILE,
+              "Custom analytic LinRegr RSS score: "
+              "{}".format(l2.score(X_test, y_test, method="rss")))
+    write_out(RESULT_FILE,
+              "Custom analytic LinRegr RSS score for training data: "
+              "{}".format(l2.score(X_train, y_train, method="rss")))
+    write_out(RESULT_FILE,
+              "Custom analytic Weights vector: "
+              "{}".format(l2.sample_weight))
 
 
 def gradient_report(X_train, X_test, y_train, y_test):
     lr = MyLinearRegression(method="grad")
     lr.fit(X_train, y_train)
-    print("Custom gradient LinRegr R-squared score: ", lr.score(X_test, y_test))
+    write_out(RESULT_FILE,
+              "Custom gradient LinRegr R-squared score: "
+              "{}".format(lr.score(X_test, y_test)))
+    write_out(RESULT_FILE,
+              "Custom gradient LinRegr RSS score: "
+              "{}".format(lr.score(X_test, y_test, method="rss")))
+    write_out(RESULT_FILE,
+              "Custom gradient Weights vector: "
+              "{}".format(lr.sample_weight))
 
 
 def main():
+    set_output()
     path, target_name = "housing.data", "MEDV"
     data = pd.read_csv(path, sep='\s+')
+    # data normalization
     data = (data - data.mean()) / data.std()
     correlation_report(data, target_name)
     X, y = get_xy(data, y_name="MEDV")

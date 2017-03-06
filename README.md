@@ -1,18 +1,30 @@
 ## Synopsis
 
-The aim is to implement LinearRegression using both analytic and gradient descent, compare the results with sklearn LinearRegression results on the houses dataset.
-
 On the given dataset it's needed to predict houses values using 13 features.
 
-##Installation
+The LinearRegression is implemented using both analytic and gradient descent,
+also compared with the results of sklearn LinearRegression.
 
-Installation commands using python 3.5:
+Correlation research is provided to explore the data.
+
+## Installation
+
+Installation commands using python 2.7:
 
 ```bash
 git clone https://github.com/madomdy/ml_houses.git
 cd ml_houses
-pyvenv venv
+virtualenv venv
 source venv/bin/activate
-pip3 install -r requirements.txt
+pip install -r requirements.txt
 ```
 
+## Running
+
+To generate output with images and summary stored, run:
+
+```bash
+python main.py
+```
+
+The result is stored in `out` folder of the current working directory.
